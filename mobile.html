@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset='utf-8' />
+  <title></title>
+  <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+  <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v0.40.1/mapbox-gl.js'></script>
+  <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v0.40.1/mapbox-gl.css' rel='stylesheet' />
+  <script src='https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.19.1/moment.min.js' charset='utf-8'></script>
+  <script src='https://npmcdn.com/@turf/turf/turf.min.js'></script>
+
+  <style>
+    #map {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 100%;
+    }
+
+    body {
+      padding: 0px;
+      margin: 0px;
+    }
+      
+      @media only screen and (max-width: 990px) {
+    .mapboxgl-ctrl {
+display: none !important;
+}  
+      }
+      
+  </style>
+</head>
+
+<body>
+
+  <style>
+    .marker {
+      display: block;
+      float:left;
+      border: none;
+      width: 60px; 
+      height: 54px;
+      cursor: pointer;
+      padding: 0;
+      background-image: url("home.png");
+      background-repeat: no-repeat;
+      background-position: center;
+      z-index: 1001;
+    }
+    
+     #searchInput{
+    	display:block;
+    	padding:7px;
+    	font-size:18px;
+        background: url(search.png) no-repeat scroll 10px 10px;
+        padding-left:45px;
+    	width: 80%;
+        height: 30px;
+        background-color: white;
+    	margin: auto;
+        border: 2px solid #cecece;
+    }
+      
+    #findMe{
+      display:block;
+      float:left;
+      padding:0px;
+      cursor: pointer;
+      background-color:white;
+    }
+    
+    .outer {
+    	position: relative; /* or absolute */
+	}
+
+	#message {
+		display:none;
+	    position: absolute;
+	    left: 50%;
+	    top: 50%;
+	    transform: translate(-50%, -50%);
+	    z-index: 1002;
+	    background-color:white;
+	    width:260px; 
+	    border:2px solid red;
+	    text-align:center;
+        font-family: Arial;
+        font-size: 14px;
+	}
+
+  </style>
+
+  <div id="find" style="text-align:center;padding:20px 0px; margin: auto;width:100%;background-color:#e4e4e4;border-bottom: 2px solid #cecece;position: absolute; z-index:1">
+  	<!-- <h1 style="margin:10px;font-family: Arial; color: red; font-weight:normal">Find Your Tractor</h1> -->
+    <input id="searchInput"  type="text" placeholder="Search for your house address">
+    <span style="font-family: Arial;display: block; margin:auto;height:30px;margin-top:10px;cursor: pointer"  onclick="getLocation()"> 
+    	<img style="width:20px;height:20px;vertical-align:middle" src="https://kodiaksnow.ca/gps_map/location_arrow.png">
+    	Get Your Location Automatically
+    </span>
+  </div>
+  
+  <div id='message' >
+    <h2>This map will become active once our tractors have been dispatched.</h2>
+  </div>
+	
+	
+  <div id='map'></div>
+
+  <script>
+    var sys = document.getElementById("sysinfo")
+    mapboxgl.accessToken = 'pk.eyJ1IjoiYmVuZGVybGlvIiwiYSI6ImNqM29qdXR5djAwMTQzM214M2hnZWVycWsifQ.jtDIyytOGMJ0TS9Pp6zFVg';
+    var map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/streets-v9',
+      zoom: 12,
+      center: [-75.898684, 45.308819]
+    });
+    var bounds = new mapboxgl.LngLatBounds();
+    var nav = new mapboxgl.NavigationControl();
+    map.addControl(nav, 'top-left');
+
+    // geolocation 
+
+    //getLocation();
+    function getLocation() {
+      console.log("Location")
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(showPosition, showError);
+      } else {
+        console.log("Geolocation is not supported by this browser.");
+        alert("Geolocation is not supported by this browser.");
+      }
+    }
+
+    function showPosition(position) {
+      map.setCenter([position.coords.longitude, position.coords.latitude])
+      map.setZoom(11)
+      var el = document.createElement('div');
+      el.className = 'marker';
+      var m = new mapboxgl.Marker(el)
+        .setLngLat([position.coords.longitude, position.coords.latitude])
+        .addTo(map);
+    }
+
+    function showError(error) {
+      var error;
+      switch (error.code) {
+        case error.PERMISSION_DENIED:
+          error = "User denied the request for Geolocation."
+          break;
+        case error.POSITION_UNAVAILABLE:
+          error = "Location information is unavailable."
+          break;
+        case error.TIMEOUT:
+          error = "The request to get user location timed out."
+          break;
+        case error.UNKNOWN_ERROR:
+          error = "An unknown error occurred."
+          break;
+      }
+      alert(error)
+    }
+
+    map.on('load', function() {
+
+      map.loadImage('tractor-new.png', function(error, image) {
+        if (error) throw error;
+        map.addImage('tractor', image);
+      });
+
+      map.addSource('icons', {
+        'type': 'geojson',
+        'data': {
+          'type': 'FeatureCollection',
+          'features': [],
+        },
+      });
+
+      map.addLayer({
+        "id": "iconsLayer",
+        "type": "symbol",
+        "source": "icons",
+        "layout": {
+          "icon-allow-overlap": true,
+          "icon-image": {
+            'type': 'identity',
+            'property': 'iconName'
+          },
+          "icon-size": 1,
+        }
+      });
+
+      map.on('mouseenter', 'iconsLayer', function() {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mouseleave', 'iconsLayer', function() {
+        map.getCanvas().style.cursor = '';
+      });
+      map.on('click', 'iconsLayer', function(e) {
+        console.log(e, e.features["0"].properties);
+        
+        var text = "<strong>Tractor Id: </strong>" + e.features["0"].properties.id + "<br>";
+        /*
+        var text = "Date:" + moment(e.features["0"].properties.time).format("MM-DD-YYYY HH:mm") + "<br>";
+        text += "Speed:" + e.features["0"].properties.speed + "";
+		*/
+        var popup = new mapboxgl.Popup()
+          .setLngLat(e.features["0"].geometry.coordinates)
+          .setHTML(text)
+          .addTo(map);
+      })
+		
+		
+	var myHeaders = new Headers();
+	myHeaders.append('pragma', 'no-cache');
+	myHeaders.append('cache-control', 'no-cache');
+	
+	var myInit = {
+	  method: 'GET',
+	  headers: myHeaders,
+	};
+	
+	var myRequest = new Request("on_off.txt");
+	
+	fetch(myRequest, myInit)	
+    .then(function(res) {
+      	return res.text();
+    })
+    .then(function(val){
+    	console.log(val)
+    	if(val === "on"){
+		  setInterval(function(){
+	      	 updateMap(false);
+	      }, 60000)
+		  updateMap(true);
+    	}else{
+    	  document.getElementById("message").style.display = "inline";
+    	}
+    })
+		
+		
+      
+
+    });
+
+	
+	function updateMap(fitBounds){
+		  
+		  var pins = [];
+	      fetch("json.php")
+	        .then(function(res) {
+	          return res.json();
+	        })
+	        .then(function(data) {
+	          pins = data.map(function(pin) {
+	            console.log(pin)
+	            bounds.extend([pin.longitude, pin.latitude]);
+	            return turf.point([pin.longitude, pin.latitude], {
+	              iconName: "tractor",
+	              time: pin.date.date,
+	              now: pin.now.date,
+	              speed: pin.speed,
+	              id: pin.device_id
+	            });
+	          })
+	          var collection = turf.featureCollection(pins);
+	          console.log(collection)
+	          
+	          map.getSource('icons').setData(collection);
+	          
+	          if(fitBounds){
+		          map.fitBounds(bounds, {
+		            padding: 200
+		          });
+		          fitBounds = false; // do not fit bounds after second update
+	          }
+	        })
+	        
+	}
+
+
+    function googleInit() {
+      /*GOOGLE GEOCODE */
+      var search = document.getElementById('searchInput');
+
+      /*
+    	var cityBounds = new google.maps.LatLngBounds(
+		  new google.maps.LatLng(45.46396137606817, -75.70816207700527),
+		  new google.maps.LatLng(45.13818056324001, -76.26199465080225));
+		*/
+
+      var options = {
+        types: ['geocode'],
+        componentRestrictions: {
+          country: 'ca'
+        }
+      };
+
+      var autocomplete = new google.maps.places.Autocomplete(search, options);
+
+      google.maps.event.addListener(autocomplete, 'place_changed', function(e) {
+        var lat = autocomplete.getPlace().geometry.location.lat();
+        var lng = autocomplete.getPlace().geometry.location.lng();
+        map.setCenter([lng, lat]);
+        map.setZoom(13)
+        search.value = ""
+
+        var el = document.createElement('div');
+        el.className = 'marker';
+        el.style.width = '50px';
+        el.style.height = '50px';
+
+        var m = new mapboxgl.Marker(el)
+          .setLngLat([lng, lat])
+          .addTo(map);
+      });
+
+      /*GOOGLE GEOCODE */
+    }
+  </script>
+  <!-- AIzaSyAVoriNkoN9okoQFodBEJvopvUxAMq0nlE -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAsrvVG02uALIZ_BvJg1FLaSUtTTRUeIIM&libraries=places&callback=googleInit" async defer></script>
+</body>
+
+</html>

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset='utf-8' />
+    <title></title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.4.0/dist/leaflet.css" integrity="sha512-puBpdR0798OZvTTbP4A8Ix/l+A4dHDD0DGqYW6RQ+9jxkRFclaxxQb/SJAWZfWAkuyeQUytO7+7N4QKrDh+drA==" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet.js" integrity="sha512-QVftwZFqvtRNi0ZyCtsznlKSWOStnDORoefr1enyq5mVL4tmKB3S/EnC3rRJcxCPavG10IcrVGSmPh6Qw5lwrg==" crossorigin=""></script>
+
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.19.1/moment.min.js' charset='utf-8'></script>
+    <script src='https://npmcdn.com/@turf/turf/turf.min.js'></script>
+
+    <style>
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        body {
+            padding: 0px;
+            margin: 0px;
+        }
+
+        @media only screen and (max-width: 990px) {
+            .mapboxgl-ctrl {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <style>
+        .marker {
+            display: block;
+            float: left;
+            border: none;
+            width: 60px;
+            height: 54px;
+            cursor: pointer;
+            padding: 0;
+            background-image: url("home.png");
+            background-repeat: no-repeat;
+            background-position: center;
+            z-index: 1001;
+        }
+
+        #searchInput {
+            display: block;
+            padding: 7px;
+            font-size: 18px;
+            background: url(search.png) no-repeat scroll 10px 10px;
+            padding-left: 45px;
+            width: 275px;
+            height: 30px;
+            background-color: white;
+            margin: auto;
+            border: 1px solid #474545;
+            box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.17);
+        }
+
+        #findMe {
+            display: block;
+            float: left;
+            padding: 0px;
+            cursor: pointer;
+            background-color: white;
+        }
+
+        .outer {
+            position: relative;
+            /* or absolute */
+        }
+
+        #message {
+            display: none;
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1002;
+            background-color: #474545;
+            width: 260px;
+            border: 2px solid #474545;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            font-family: Arial;
+            font-size: 14px;
+            color: white;
+        }
+    </style>
+
+    <div id="find" style="text-align:center;padding:20px 0px; margin: auto;width:100%;background-color:#474545;box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);position: absolute; z-index:1000">
+        <img src="map-title.png">
+        <br><br>
+        <!-- <h1 style="margin:10px;font-family: Arial; color: red; font-weight:normal">Find Your Tractor</h1> -->
+        <input id="searchInput" type="text" placeholder="Address, city or postal code">
+    </div>
+
+    <div id='message'>
+        <h2>This map will become active once our tractors have been dispatched.</h2>
+    </div>
+
+    <div id='map'></div>
+
+    <script>
+        var markers = [];
+
+        var sys = document.getElementById("sysinfo")
+        var map = L.map('map').setView([45.308819, -75.898684], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        map.whenReady(function() {
+
+            console.log('loaded');
+
+            map.on('click', 'iconsLayer', function(e) {
+                console.log(e, e.features["0"].properties);
+                var text = "<strong>Tractor Id: </strong>" + e.features["0"].properties.id + "<br>";
+                var popup = new mapboxgl.Popup()
+                    .setLngLat(e.features["0"].geometry.coordinates)
+                    .setHTML(text)
+                    .addTo(map);
+            })
+
+            var myHeaders = new Headers();
+            myHeaders.append('pragma', 'no-cache');
+            myHeaders.append('cache-control', 'no-cache');
+
+            var myInit = {
+                method: 'GET',
+                headers: myHeaders,
+            };
+
+            var myRequest = new Request("https://kodiaksnow.ca/gps_map/on_off.html");
+
+            fetch(myRequest, myInit)
+                .then(function(res) {
+                    return res.text();
+                })
+                .then(function(val) {
+                    console.log(val)
+                    //val = "on" // FOR TEST HARDCODED
+                    if (val === "on") {
+                        setInterval(function() {
+                            updateMap(false);
+                        }, 60000)
+                        updateMap(true);
+                    } else {
+                        document.getElementById("message").style.display = "inline";
+                    }
+                })
+        })
+
+        //getLocation();
+        function getLocation() {
+            console.log("Location")
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(showPosition, showError);
+            } else {
+                console.log("Geolocation is not supported by this browser.");
+                alert("Geolocation is not supported by this browser.");
+            }
+        }
+
+        function showPosition(position) {
+
+            map.setView([position.coords.latitude, position.coords.longitude], 13);
+            var LeafIcon = L.Icon.extend({
+                options: {
+                    iconSize: [51, 46],
+                }
+            });
+            L.marker([position.coords.latitude, position.coords.longitude], {
+                icon: new LeafIcon({
+                    iconUrl: 'home.png'
+                })
+            }).addTo(map);
+        }
+
+        function showError(error) {
+            var error;
+            switch (error.code) {
+                case error.PERMISSION_DENIED:
+                    error = "User denied the request for Geolocation."
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    error = "Location information is unavailable."
+                    break;
+                case error.TIMEOUT:
+                    error = "The request to get user location timed out."
+                    break;
+                case error.UNKNOWN_ERROR:
+                    error = "An unknown error occurred."
+                    break;
+            }
+            alert(error)
+        }
+
+        function updateMap(fitBounds) {
+
+            var LeafIcon = L.Icon.extend({
+                options: {
+                    iconSize: [40, 36],
+                }
+            });
+
+            fetch("json.php")
+                .then(function(res) {
+                    return res.json();
+                })
+                .then(function(data) {
+
+                    markers.map(function(marker) {
+                        marker.remove()
+                    })
+                    markers = data.map(function(pin) {
+                        //console.log(pin)
+                        var text = "<strong>Tractor Id: </strong>" + pin.device_id + "<br>";
+                        return L.marker([pin.latitude, pin.longitude], {
+                            icon: new LeafIcon({
+                                iconUrl: 'tractor-new.png'
+                            })
+                        }).addTo(map).bindPopup(text);
+                    })
+
+                    //console.log(markers);
+
+                    var group = new L.featureGroup(markers);
+                    //map.fitBounds(group.getBounds());
+
+					console.log(fitBounds);
+                    if (fitBounds) {
+                        map.fitBounds(group.getBounds());
+                        fitBounds = false; // do not fit bounds after second update
+                    }
+                })
+
+        }
+
+        function googleInit() {
+            /*GOOGLE GEOCODE */
+            var search = document.getElementById('searchInput');
+            var options = {
+                types: ['geocode'],
+                componentRestrictions: {
+                    country: 'ca'
+                }
+            };
+            var autocomplete = new google.maps.places.Autocomplete(search, options);
+            google.maps.event.addListener(autocomplete, 'place_changed', function(e) {
+                var lat = autocomplete.getPlace().geometry.location.lat();
+                var lng = autocomplete.getPlace().geometry.location.lng();
+                map.setView([lat, lng], 13);
+                search.value = ""
+                var LeafIcon = L.Icon.extend({
+                    options: {
+                        iconSize: [51, 46],
+                    }
+                });
+                L.marker([lat, lng], {
+                    icon: new LeafIcon({
+                        iconUrl: 'home.png'
+                    })
+                }).addTo(map);
+            });
+
+            /*GOOGLE GEOCODE */
+        }
+    </script>
+    <!-- AIzaSyAVoriNkoN9okoQFodBEJvopvUxAMq0nlE -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyATJdc9dFSb2yChjk8aplcidOsz2Z-SZ3U&libraries=places&callback=googleInit" async defer></script>
+</body>
+
+</html>
